@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from io import BytesIO
 from PIL import Image
 import xlsxwriter
@@ -12,6 +12,41 @@ st.title("ROCMIN - Registro de Produccion Diaria")
 # Inicializar estado de sesion
 if 'num_pozos' not in st.session_state:
     st.session_state.num_pozos = 3
+
+# Lista de tipos de demora
+tipos_demora = [
+    "Mantenimiento Programado",
+    "Falla Mec, Elec, Hidr, Neum",
+    "Espera de Repuestos",
+    "Espera de Mecanicos",
+    "Falla GPS/Camara",
+    "Sin Operador",
+    "Abastecimiento de Combustible",
+    "Abastecimiento de Agua",
+    "Espera de Combustible",
+    "Espera de Agua",
+    "Reservas Operativas",
+    "Sin Acceso",
+    "Sin Estandarizacion",
+    "Limpieza de Area",
+    "Espera de Escolta",
+    "Tronadura",
+    "Traslado en Cama Baja",
+    "Colacion",
+    "Traslado Colacion",
+    "Cambio de Turno",
+    "Espera Apoyo Cambio Aceros",
+    "Condicion de Riesgo/Climatico",
+    "Revision Equipo",
+    "Charla, Reunion",
+    "Limpieza de Equipo",
+    "Sin Postura"
+]
+
+# Inicializar contadores de filas para cada tipo de demora
+for idx in range(len(tipos_demora)):
+    if f'num_filas_demora_{idx}' not in st.session_state:
+        st.session_state[f'num_filas_demora_{idx}'] = 1
 
 # ============================================
 # SECCION 1: DATOS DEL TURNO
@@ -120,61 +155,96 @@ with col2:
 # ============================================
 st.header("Tiempos de Demora con Motor en Marcha")
 
-# Lista de tipos de demora
-tipos_demora = [
-    "Mantenimiento Programado",
-    "Falla Mec, Elec, Hidr, Neum",
-    "Espera de Repuestos",
-    "Espera de Mecanicos",
-    "Falla GPS/Camara",
-    "Sin Operador",
-    "Abastecimiento de Combustible",
-    "Abastecimiento de Agua",
-    "Espera de Combustible",
-    "Espera de Agua",
-    "Reservas Operativas",
-    "Sin Acceso",
-    "Sin Estandarizacion",
-    "Limpieza de Area",
-    "Espera de Escolta",
-    "Tronadura",
-    "Traslado en Cama Baja",
-    "Colacion",
-    "Traslado Colacion",
-    "Cambio de Turno",
-    "Espera Apoyo Cambio Aceros",
-    "Condicion de Riesgo/Climatico",
-    "Revision Equipo",
-    "Charla, Reunion",
-    "Limpieza de Equipo",
-    "Sin Postura"
-]
+def parse_hora(hora_str):
+    """Convierte string HH:MM a objeto time, retorna None si es invalido"""
+    if not hora_str or hora_str.strip() == "":
+        return None
+    try:
+        # Intentar parsear formato HH:MM
+        hora_str = hora_str.strip()
+        if ":" in hora_str:
+            partes = hora_str.split(":")
+            h = int(partes[0])
+            m = int(partes[1]) if len(partes) > 1 else 0
+            if 0 <= h <= 23 and 0 <= m <= 59:
+                return time(h, m)
+    except:
+        pass
+    return None
+
+def calcular_minutos(hora_desde_str, hora_hasta_str):
+    """Calcula la diferencia en minutos entre dos horas (strings HH:MM)"""
+    hora_desde = parse_hora(hora_desde_str)
+    hora_hasta = parse_hora(hora_hasta_str)
+
+    if hora_desde is None or hora_hasta is None:
+        return 0
+
+    # Convertir a datetime para poder restar
+    hoy = datetime.today().date()
+    dt_desde = datetime.combine(hoy, hora_desde)
+    dt_hasta = datetime.combine(hoy, hora_hasta)
+
+    # Si hasta es menor que desde, asumimos que cruza medianoche
+    if dt_hasta < dt_desde:
+        dt_hasta += timedelta(days=1)
+
+    diff = dt_hasta - dt_desde
+    return int(diff.total_seconds() / 60)
 
 demoras_data = {}
 
 # Crear tabla de demoras con expansor para cada tipo
 for idx, tipo in enumerate(tipos_demora):
     with st.expander(f"{tipo}", expanded=False):
-        cols_dem = st.columns([1.5, 1.5, 1.5, 1.5, 1])
-        cols_dem[0].markdown("**Desde**")
-        cols_dem[1].markdown("**Hasta**")
-        cols_dem[2].markdown("**Desde 2**")
-        cols_dem[3].markdown("**Hasta 2**")
-        cols_dem[4].markdown("**Total Min**")
+        # Botones para agregar/quitar filas
+        col_btn1, col_btn2, col_info = st.columns([1, 1, 2])
+        with col_btn1:
+            if st.button(f"+ Agregar fila", key=f"add_fila_{idx}"):
+                st.session_state[f'num_filas_demora_{idx}'] += 1
+                st.rerun()
+        with col_btn2:
+            if st.button(f"- Quitar fila", key=f"remove_fila_{idx}") and st.session_state[f'num_filas_demora_{idx}'] > 1:
+                st.session_state[f'num_filas_demora_{idx}'] -= 1
+                st.rerun()
 
-        cols_input = st.columns([1.5, 1.5, 1.5, 1.5, 1])
-        desde1 = cols_input[0].time_input("", value=None, key=f"dem_desde1_{idx}", label_visibility="collapsed")
-        hasta1 = cols_input[1].time_input("", value=None, key=f"dem_hasta1_{idx}", label_visibility="collapsed")
-        desde2 = cols_input[2].time_input("", value=None, key=f"dem_desde2_{idx}", label_visibility="collapsed")
-        hasta2 = cols_input[3].time_input("", value=None, key=f"dem_hasta2_{idx}", label_visibility="collapsed")
-        total_min = cols_input[4].number_input("", min_value=0, step=1, key=f"dem_total_{idx}", label_visibility="collapsed")
+        # Headers
+        cols_header = st.columns([2, 2, 1.5])
+        cols_header[0].markdown("**Desde (HH:MM)**")
+        cols_header[1].markdown("**Hasta (HH:MM)**")
+        cols_header[2].markdown("**Minutos**")
+
+        total_minutos_tipo = 0
+        filas_demora = []
+
+        # Filas dinamicas
+        for fila in range(st.session_state[f'num_filas_demora_{idx}']):
+            cols_input = st.columns([2, 2, 1.5])
+            desde = cols_input[0].text_input("", key=f"dem_desde_{idx}_{fila}", placeholder="ej: 08:30", label_visibility="collapsed")
+            hasta = cols_input[1].text_input("", key=f"dem_hasta_{idx}_{fila}", placeholder="ej: 09:15", label_visibility="collapsed")
+
+            # Calcular minutos automaticamente
+            minutos = calcular_minutos(desde, hasta)
+            total_minutos_tipo += minutos
+
+            # Mostrar minutos calculados
+            if desde and hasta and minutos == 0:
+                cols_input[2].markdown(":red[Formato invalido]")
+            else:
+                cols_input[2].markdown(f"**{minutos}** min")
+
+            filas_demora.append({
+                'Desde': desde if desde else "",
+                'Hasta': hasta if hasta else "",
+                'Minutos': minutos
+            })
+
+        # Mostrar total
+        st.markdown(f"### Total: **{total_minutos_tipo}** minutos")
 
         demoras_data[tipo] = {
-            'Desde 1': desde1.strftime("%H:%M") if desde1 else "",
-            'Hasta 1': hasta1.strftime("%H:%M") if hasta1 else "",
-            'Desde 2': desde2.strftime("%H:%M") if desde2 else "",
-            'Hasta 2': hasta2.strftime("%H:%M") if hasta2 else "",
-            'Total Min': total_min
+            'filas': filas_demora,
+            'total_min': total_minutos_tipo
         }
 
 # ============================================
@@ -299,6 +369,14 @@ def generar_excel():
         'valign': 'vcenter'
     })
 
+    total_format = workbook.add_format({
+        'bold': True,
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter',
+        'bg_color': '#FFEB9C'
+    })
+
     # Ajustar anchos de columna
     worksheet.set_column('A:A', 30)
     worksheet.set_column('B:J', 15)
@@ -363,7 +441,7 @@ def generar_excel():
 
     # Total metros
     worksheet.write(row, 0, 'TOTAL METROS REALES', label_format)
-    worksheet.write(row, 2, total_metros, cell_format)
+    worksheet.write(row, 2, total_metros, total_format)
     row += 2
 
     # TIEMPOS DE OPERACION
@@ -377,25 +455,34 @@ def generar_excel():
     row += 2
 
     # TIEMPOS DE DEMORA CON MOTOR EN MARCHA
-    worksheet.merge_range(row, 0, row, 5, '*Tiempos de Demora con Motor en Marcha*', section_format)
+    worksheet.merge_range(row, 0, row, 3, '*Tiempos de Demora con Motor en Marcha*', section_format)
     row += 1
 
-    worksheet.write(row, 0, 'Item', header_format)
+    worksheet.write(row, 0, 'Tipo de Demora', header_format)
     worksheet.write(row, 1, 'Desde', header_format)
     worksheet.write(row, 2, 'Hasta', header_format)
-    worksheet.write(row, 3, 'Desde', header_format)
-    worksheet.write(row, 4, 'Hasta', header_format)
-    worksheet.write(row, 5, 'Total Min', header_format)
+    worksheet.write(row, 3, 'Minutos', header_format)
     row += 1
 
     for tipo, datos in demoras_data.items():
-        worksheet.write(row, 0, tipo, label_format)
-        worksheet.write(row, 1, datos['Desde 1'], cell_format)
-        worksheet.write(row, 2, datos['Hasta 1'], cell_format)
-        worksheet.write(row, 3, datos['Desde 2'], cell_format)
-        worksheet.write(row, 4, datos['Hasta 2'], cell_format)
-        worksheet.write(row, 5, datos['Total Min'], cell_format)
-        row += 1
+        if datos['total_min'] > 0:  # Solo mostrar si tiene datos
+            first_row = True
+            for fila in datos['filas']:
+                if fila['Desde'] or fila['Hasta']:
+                    if first_row:
+                        worksheet.write(row, 0, tipo, label_format)
+                        first_row = False
+                    else:
+                        worksheet.write(row, 0, '', cell_format)
+                    worksheet.write(row, 1, fila['Desde'], cell_format)
+                    worksheet.write(row, 2, fila['Hasta'], cell_format)
+                    worksheet.write(row, 3, fila['Minutos'], cell_format)
+                    row += 1
+
+            # Total del tipo
+            worksheet.write(row, 0, f'Total {tipo}', label_format)
+            worksheet.write(row, 3, datos['total_min'], total_format)
+            row += 1
 
     row += 1
 
