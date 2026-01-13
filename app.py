@@ -2,24 +2,19 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, time
 from io import BytesIO
-from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 import xlsxwriter
-import base64
 
-st.set_page_config(page_title="ROCMIN - Registro de Producción", layout="wide")
+st.set_page_config(page_title="ROCMIN - Registro de Produccion", layout="wide")
 
-st.title("ROCMIN - Registro de Producción Diaria")
+st.title("ROCMIN - Registro de Produccion Diaria")
 
-# Inicializar estado de sesión
+# Inicializar estado de sesion
 if 'num_pozos' not in st.session_state:
     st.session_state.num_pozos = 3
 
-if 'num_demoras' not in st.session_state:
-    st.session_state.num_demoras = {key: 1 for key in range(26)}
-
 # ============================================
-# SECCIÓN 1: DATOS DEL TURNO
+# SECCION 1: DATOS DEL TURNO
 # ============================================
 st.header("Datos del Turno")
 
@@ -32,15 +27,15 @@ with col1:
 with col2:
     jefe_turno = st.text_input("Jefe de Turno", key="jefe_turno")
     tricono = st.text_input("Tricono", key="tricono")
-    turno = st.selectbox("Turno", ["Día", "Noche"], key="turno")
+    turno = st.selectbox("Turno", ["Dia", "Noche"], key="turno")
 
 with col3:
     st.write("")  # Espaciador
 
 # ============================================
-# SECCIÓN 2: HORÓMETROS
+# SECCION 2: HOROMETROS
 # ============================================
-st.header("Horómetros")
+st.header("Horometros")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -52,7 +47,7 @@ with col1:
         motor_salida = st.number_input("Salida", min_value=0.0, step=0.1, key="motor_salida")
 
 with col2:
-    st.subheader("Rotación")
+    st.subheader("Rotacion")
     col_r1, col_r2 = st.columns(2)
     with col_r1:
         rotacion_entrada = st.number_input("Entrada", min_value=0.0, step=0.1, key="rotacion_entrada")
@@ -60,25 +55,25 @@ with col2:
         rotacion_salida = st.number_input("Salida", min_value=0.0, step=0.1, key="rotacion_salida")
 
 # ============================================
-# SECCIÓN 3: PRODUCCIÓN
+# SECCION 3: PRODUCCION
 # ============================================
-st.header("Producción")
+st.header("Produccion")
 
 col_add, col_remove = st.columns([1, 1])
 with col_add:
-    if st.button("➕ Agregar Pozo"):
+    if st.button("+ Agregar Pozo"):
         st.session_state.num_pozos += 1
 with col_remove:
-    if st.button("➖ Quitar Pozo") and st.session_state.num_pozos > 1:
+    if st.button("- Quitar Pozo") and st.session_state.num_pozos > 1:
         st.session_state.num_pozos -= 1
 
-# Headers de la tabla de producción
+# Headers de la tabla de produccion
 cols_header = st.columns([1, 1, 1, 1.2, 1.2, 1.2, 1.5, 1])
-headers = ["Malla", "N° Pozo", "Metros", "Hora Inicio", "Hora Término", "Tiempo Efectivo", "Demora Op. Traslado", "Diámetro"]
+headers = ["Malla", "N Pozo", "Metros", "Hora Inicio", "Hora Termino", "Tiempo Efectivo", "Demora Op. Traslado", "Diametro"]
 for col, header in zip(cols_header, headers):
     col.markdown(f"**{header}**")
 
-# Filas de producción
+# Filas de produccion
 produccion_data = []
 total_metros = 0.0
 
@@ -98,21 +93,21 @@ for i in range(st.session_state.num_pozos):
 
     produccion_data.append({
         'Malla': malla,
-        'N° Pozo': num_pozo,
+        'N Pozo': num_pozo,
         'Metros': metros,
         'Hora Inicio': hora_inicio.strftime("%H:%M") if hora_inicio else "",
-        'Hora Término': hora_termino.strftime("%H:%M") if hora_termino else "",
+        'Hora Termino': hora_termino.strftime("%H:%M") if hora_termino else "",
         'Tiempo Efectivo': tiempo_efectivo,
         'Demora Op. Traslado': demora_traslado,
-        'Diámetro': diametro
+        'Diametro': diametro
     })
 
 st.metric("Total Metros Reales", f"{total_metros:.2f} m")
 
 # ============================================
-# SECCIÓN 4: TIEMPOS DE OPERACIÓN
+# SECCION 4: TIEMPOS DE OPERACION
 # ============================================
-st.header("Tiempos de Operación")
+st.header("Tiempos de Operacion")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -121,7 +116,7 @@ with col2:
     tiempo_demoras_op = st.number_input("Tiempo Demoras Operacionales (min)", min_value=0, step=1, key="tiempo_demoras_op")
 
 # ============================================
-# SECCIÓN 5: TIEMPOS DE DEMORA CON MOTOR EN MARCHA
+# SECCION 5: TIEMPOS DE DEMORA CON MOTOR EN MARCHA
 # ============================================
 st.header("Tiempos de Demora con Motor en Marcha")
 
@@ -130,8 +125,8 @@ tipos_demora = [
     "Mantenimiento Programado",
     "Falla Mec, Elec, Hidr, Neum",
     "Espera de Repuestos",
-    "Espera de Mecánicos",
-    "Falla GPS/Cámara",
+    "Espera de Mecanicos",
+    "Falla GPS/Camara",
     "Sin Operador",
     "Abastecimiento de Combustible",
     "Abastecimiento de Agua",
@@ -139,18 +134,18 @@ tipos_demora = [
     "Espera de Agua",
     "Reservas Operativas",
     "Sin Acceso",
-    "Sin Estandarización",
-    "Limpieza de Área",
+    "Sin Estandarizacion",
+    "Limpieza de Area",
     "Espera de Escolta",
     "Tronadura",
     "Traslado en Cama Baja",
-    "Colación",
-    "Traslado Colación",
+    "Colacion",
+    "Traslado Colacion",
     "Cambio de Turno",
     "Espera Apoyo Cambio Aceros",
-    "Condición de Riesgo/Climático",
-    "Revisión Equipo",
-    "Charla, Reunión",
+    "Condicion de Riesgo/Climatico",
+    "Revision Equipo",
+    "Charla, Reunion",
     "Limpieza de Equipo",
     "Sin Postura"
 ]
@@ -183,23 +178,23 @@ for idx, tipo in enumerate(tipos_demora):
         }
 
 # ============================================
-# SECCIÓN 6: ABASTECIMIENTOS
+# SECCION 6: ABASTECIMIENTOS
 # ============================================
 st.header("Abastecimientos")
 
 abastecimientos = [
-    "1° Carga de Petróleo Turno",
-    "2° Carga de Petróleo Turno",
+    "1 Carga de Petroleo Turno",
+    "2 Carga de Petroleo Turno",
     "Carga de Agua"
 ]
 
 abastecimientos_data = {}
 
 cols_ab_header = st.columns([2, 1, 1, 1])
-cols_ab_header[0].markdown("**Descripción**")
+cols_ab_header[0].markdown("**Descripcion**")
 cols_ab_header[1].markdown("**Litros**")
 cols_ab_header[2].markdown("**Hora**")
-cols_ab_header[3].markdown("**Horómetro**")
+cols_ab_header[3].markdown("**Horometro**")
 
 for idx, abast in enumerate(abastecimientos):
     cols_ab = st.columns([2, 1, 1, 1])
@@ -211,92 +206,61 @@ for idx, abast in enumerate(abastecimientos):
     abastecimientos_data[abast] = {
         'Litros': litros,
         'Hora': hora_abast.strftime("%H:%M") if hora_abast else "",
-        'Horómetro': horometro_abast
+        'Horometro': horometro_abast
     }
 
 # ============================================
-# SECCIÓN 7: DECLARACIÓN DE INCIDENTES
+# SECCION 7: DECLARACION DE INCIDENTES
 # ============================================
-st.header("Declaración de Incidentes")
+st.header("Declaracion de Incidentes")
 
 incidentes_tipo = st.text_area("Incidentes Ambientales/Personas/Equipos", key="incidentes_tipo")
-incidentes_desc = st.text_area("Descripción", key="incidentes_desc")
+incidentes_desc = st.text_area("Descripcion", key="incidentes_desc")
 no_conformidad = st.text_area("No Conformidad", key="no_conformidad")
 
 # ============================================
-# SECCIÓN 8: OBSERVACIONES
+# SECCION 8: OBSERVACIONES
 # ============================================
 st.header("Observaciones")
 
 observaciones = st.text_area("", key="observaciones", height=100)
 
 # ============================================
-# SECCIÓN 9: FIRMAS
+# SECCION 9: FIRMAS (Subida de imagenes)
 # ============================================
 st.header("Firmas")
 
-st.markdown("**Instrucciones:** Dibuje su firma en el recuadro correspondiente usando el mouse o el dedo en dispositivos táctiles.")
+st.markdown("**Instrucciones:** Suba una imagen de su firma (PNG, JPG) o tome una foto de su firma.")
 
 col_firma1, col_firma2, col_firma3 = st.columns(3)
 
 with col_firma1:
     st.subheader("Firma Operador")
-    canvas_operador = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=2,
-        stroke_color="#000000",
-        background_color="#ffffff",
-        height=150,
-        width=300,
-        drawing_mode="freedraw",
-        key="canvas_operador",
-    )
+    firma_operador_file = st.file_uploader("Subir firma", type=['png', 'jpg', 'jpeg'], key="firma_operador")
+    if firma_operador_file:
+        st.image(firma_operador_file, width=200)
 
 with col_firma2:
     st.subheader("Firma Supervisor ROCMIN")
-    canvas_supervisor_rocmin = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=2,
-        stroke_color="#000000",
-        background_color="#ffffff",
-        height=150,
-        width=300,
-        drawing_mode="freedraw",
-        key="canvas_supervisor_rocmin",
-    )
+    firma_supervisor_rocmin_file = st.file_uploader("Subir firma", type=['png', 'jpg', 'jpeg'], key="firma_supervisor_rocmin")
+    if firma_supervisor_rocmin_file:
+        st.image(firma_supervisor_rocmin_file, width=200)
 
 with col_firma3:
     st.subheader("Firma Supervisor Cliente")
-    canvas_supervisor_cliente = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
-        stroke_width=2,
-        stroke_color="#000000",
-        background_color="#ffffff",
-        height=150,
-        width=300,
-        drawing_mode="freedraw",
-        key="canvas_supervisor_cliente",
-    )
+    firma_supervisor_cliente_file = st.file_uploader("Subir firma", type=['png', 'jpg', 'jpeg'], key="firma_supervisor_cliente")
+    if firma_supervisor_cliente_file:
+        st.image(firma_supervisor_cliente_file, width=200)
 
 # ============================================
-# FUNCIÓN PARA GENERAR EXCEL
+# FUNCION PARA GENERAR EXCEL
 # ============================================
 def generar_excel():
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    worksheet = workbook.add_worksheet('Registro Producción')
+    worksheet = workbook.add_worksheet('Registro Produccion')
 
     # Formatos
-    titulo_format = workbook.add_format({
-        'bold': True,
-        'font_size': 14,
-        'bg_color': '#4472C4',
-        'font_color': 'white',
-        'align': 'center',
-        'valign': 'vcenter',
-        'border': 1
-    })
-
     header_format = workbook.add_format({
         'bold': True,
         'bg_color': '#D9E2F3',
@@ -361,8 +325,8 @@ def generar_excel():
     worksheet.write(row, 1, turno, value_format)
     row += 2
 
-    # HORÓMETROS
-    worksheet.merge_range(row, 0, row, 2, 'Horómetros', section_format)
+    # HOROMETROS
+    worksheet.merge_range(row, 0, row, 2, 'Horometros', section_format)
     row += 1
     worksheet.write(row, 0, '', header_format)
     worksheet.write(row, 1, 'Entrada', header_format)
@@ -372,29 +336,29 @@ def generar_excel():
     worksheet.write(row, 1, motor_entrada, cell_format)
     worksheet.write(row, 2, motor_salida, cell_format)
     row += 1
-    worksheet.write(row, 0, 'Rotación', label_format)
+    worksheet.write(row, 0, 'Rotacion', label_format)
     worksheet.write(row, 1, rotacion_entrada, cell_format)
     worksheet.write(row, 2, rotacion_salida, cell_format)
     row += 2
 
-    # PRODUCCIÓN
-    worksheet.merge_range(row, 0, row, 7, '*Producción*', section_format)
+    # PRODUCCION
+    worksheet.merge_range(row, 0, row, 7, '*Produccion*', section_format)
     row += 1
 
-    headers_prod = ['Malla', 'N° Pozo', 'Metros', 'Hora Inicio', 'Hora Término', 'Tiempo Efectivo', 'Demora Op.', 'Diámetro']
+    headers_prod = ['Malla', 'N Pozo', 'Metros', 'Hora Inicio', 'Hora Termino', 'Tiempo Efectivo', 'Demora Op.', 'Diametro']
     for col, header in enumerate(headers_prod):
         worksheet.write(row, col, header, header_format)
     row += 1
 
     for pozo in produccion_data:
         worksheet.write(row, 0, pozo['Malla'], cell_format)
-        worksheet.write(row, 1, pozo['N° Pozo'], cell_format)
+        worksheet.write(row, 1, pozo['N Pozo'], cell_format)
         worksheet.write(row, 2, pozo['Metros'], cell_format)
         worksheet.write(row, 3, pozo['Hora Inicio'], cell_format)
-        worksheet.write(row, 4, pozo['Hora Término'], cell_format)
+        worksheet.write(row, 4, pozo['Hora Termino'], cell_format)
         worksheet.write(row, 5, pozo['Tiempo Efectivo'], cell_format)
         worksheet.write(row, 6, pozo['Demora Op. Traslado'], cell_format)
-        worksheet.write(row, 7, pozo['Diámetro'], cell_format)
+        worksheet.write(row, 7, pozo['Diametro'], cell_format)
         row += 1
 
     # Total metros
@@ -402,8 +366,8 @@ def generar_excel():
     worksheet.write(row, 2, total_metros, cell_format)
     row += 2
 
-    # TIEMPOS DE OPERACIÓN
-    worksheet.merge_range(row, 0, row, 1, '*Tiempos de Operación*', section_format)
+    # TIEMPOS DE OPERACION
+    worksheet.merge_range(row, 0, row, 1, '*Tiempos de Operacion*', section_format)
     row += 1
     worksheet.write(row, 0, 'Tiempo Efectivo Total', label_format)
     worksheet.write(row, 1, tiempo_efectivo_total, cell_format)
@@ -439,28 +403,28 @@ def generar_excel():
     worksheet.merge_range(row, 0, row, 3, '*Abastecimientos*', section_format)
     row += 1
 
-    worksheet.write(row, 0, 'Descripción', header_format)
+    worksheet.write(row, 0, 'Descripcion', header_format)
     worksheet.write(row, 1, 'Litros', header_format)
     worksheet.write(row, 2, 'Hora', header_format)
-    worksheet.write(row, 3, 'Horómetro', header_format)
+    worksheet.write(row, 3, 'Horometro', header_format)
     row += 1
 
     for abast, datos in abastecimientos_data.items():
         worksheet.write(row, 0, abast, label_format)
         worksheet.write(row, 1, datos['Litros'], cell_format)
         worksheet.write(row, 2, datos['Hora'], cell_format)
-        worksheet.write(row, 3, datos['Horómetro'], cell_format)
+        worksheet.write(row, 3, datos['Horometro'], cell_format)
         row += 1
 
     row += 1
 
-    # DECLARACIÓN DE INCIDENTES
-    worksheet.merge_range(row, 0, row, 3, '*Declaración de Incidentes*', section_format)
+    # DECLARACION DE INCIDENTES
+    worksheet.merge_range(row, 0, row, 3, '*Declaracion de Incidentes*', section_format)
     row += 1
     worksheet.write(row, 0, 'Incidentes Ambientales/Personas/Equipos', label_format)
     worksheet.merge_range(row, 1, row, 3, incidentes_tipo, value_format)
     row += 1
-    worksheet.write(row, 0, 'Descripción', label_format)
+    worksheet.write(row, 0, 'Descripcion', label_format)
     worksheet.merge_range(row, 1, row, 3, incidentes_desc, value_format)
     row += 1
     worksheet.write(row, 0, 'No Conformidad', label_format)
@@ -479,40 +443,34 @@ def generar_excel():
 
     firma_row = row
 
-    # Insertar firmas como imágenes
-    if canvas_operador.image_data is not None:
-        img = Image.fromarray(canvas_operador.image_data.astype('uint8'), 'RGBA')
-        img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
+    # Insertar firmas como imagenes
+    if firma_operador_file is not None:
+        firma_operador_file.seek(0)
+        img_data = BytesIO(firma_operador_file.read())
         worksheet.write(firma_row, 0, 'Firma Operador:', label_format)
         worksheet.insert_image(firma_row + 1, 0, 'firma_operador.png',
-                             {'image_data': img_byte_arr, 'x_scale': 0.5, 'y_scale': 0.5})
+                             {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
 
-    if canvas_supervisor_rocmin.image_data is not None:
-        img = Image.fromarray(canvas_supervisor_rocmin.image_data.astype('uint8'), 'RGBA')
-        img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
+    if firma_supervisor_rocmin_file is not None:
+        firma_supervisor_rocmin_file.seek(0)
+        img_data = BytesIO(firma_supervisor_rocmin_file.read())
         worksheet.write(firma_row, 2, 'Firma Supervisor ROCMIN:', label_format)
         worksheet.insert_image(firma_row + 1, 2, 'firma_supervisor_rocmin.png',
-                             {'image_data': img_byte_arr, 'x_scale': 0.5, 'y_scale': 0.5})
+                             {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
 
-    if canvas_supervisor_cliente.image_data is not None:
-        img = Image.fromarray(canvas_supervisor_cliente.image_data.astype('uint8'), 'RGBA')
-        img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
+    if firma_supervisor_cliente_file is not None:
+        firma_supervisor_cliente_file.seek(0)
+        img_data = BytesIO(firma_supervisor_cliente_file.read())
         worksheet.write(firma_row, 4, 'Firma Supervisor Cliente:', label_format)
         worksheet.insert_image(firma_row + 1, 4, 'firma_supervisor_cliente.png',
-                             {'image_data': img_byte_arr, 'x_scale': 0.5, 'y_scale': 0.5})
+                             {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
 
     workbook.close()
     output.seek(0)
     return output
 
 # ============================================
-# BOTÓN DE DESCARGA
+# BOTON DE DESCARGA
 # ============================================
 st.markdown("---")
 st.header("Descargar Registro")
@@ -523,14 +481,14 @@ if st.button("Generar Excel para Descarga", type="primary"):
     else:
         # Generar nombre del archivo: fecha_Turno_NombreOperador
         fecha_str = fecha.strftime("%Y%m%d")
-        turno_str = "Dia" if turno == "Día" else "Noche"
+        turno_str = turno
         operador_str = operador.replace(" ", "_")
         nombre_archivo = f"{fecha_str}_{turno_str}_{operador_str}.xlsx"
 
         excel_file = generar_excel()
 
         st.download_button(
-            label=f"📥 Descargar: {nombre_archivo}",
+            label=f"Descargar: {nombre_archivo}",
             data=excel_file,
             file_name=nombre_archivo,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -542,4 +500,4 @@ if st.button("Generar Excel para Descarga", type="primary"):
 # FOOTER
 # ============================================
 st.markdown("---")
-st.markdown("*ROCMIN - Sistema de Registro de Producción Diaria*")
+st.markdown("*ROCMIN - Sistema de Registro de Produccion Diaria*")
