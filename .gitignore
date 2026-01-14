@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtualenv / python tooling
+.venv/
+venv/
+.Python
+pip-wheel-metadata/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
