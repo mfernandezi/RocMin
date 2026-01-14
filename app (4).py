@@ -612,6 +612,39 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Función para combinar DataFrames evitando duplicados
+def combinar_datos_uebd(df_existente, df_nuevo):
+    """Combina datos UEBD evitando duplicados basándose en rig, fecha, duracion, codigo"""
+    if df_existente is None or len(df_existente) == 0:
+        return df_nuevo
+    if df_nuevo is None or len(df_nuevo) == 0:
+        return df_existente
+
+    # Concatenar ambos DataFrames
+    df_combinado = pd.concat([df_existente, df_nuevo], ignore_index=True)
+
+    # Eliminar duplicados basándose en columnas clave
+    cols_duplicado = ['rig', 'fecha', 'duracion', 'codigo', 'estado']
+    df_combinado = df_combinado.drop_duplicates(subset=cols_duplicado, keep='last')
+
+    return df_combinado.reset_index(drop=True)
+
+def combinar_datos_qaqc(df_existente, df_nuevo):
+    """Combina datos QAQC evitando duplicados basándose en rig, fecha, hole, metros"""
+    if df_existente is None or len(df_existente) == 0:
+        return df_nuevo
+    if df_nuevo is None or len(df_nuevo) == 0:
+        return df_existente
+
+    # Concatenar ambos DataFrames
+    df_combinado = pd.concat([df_existente, df_nuevo], ignore_index=True)
+
+    # Eliminar duplicados basándose en columnas clave
+    cols_duplicado = ['rig', 'fecha', 'hole', 'metros']
+    df_combinado = df_combinado.drop_duplicates(subset=cols_duplicado, keep='last')
+
+    return df_combinado.reset_index(drop=True)
+
 # Sidebar - Carga de archivos
 with st.sidebar:
     st.header("📁 Carga de Archivos")
@@ -625,28 +658,106 @@ with st.sidebar:
     # Nota sobre formato CSV para archivos grandes
     st.caption("⚡ **Tip:** Para archivos grandes, usar CSV es más rápido. Si tu Excel tiene conexión externa, guárdalo como CSV primero.")
 
+    # Opción para agregar o reemplazar datos
+    st.markdown("---")
+    modo_carga = st.radio(
+        "📥 Modo de carga de archivos",
+        options=["Reemplazar datos", "Agregar turno anterior"],
+        index=0,
+        help="**Reemplazar:** Los nuevos datos reemplazan los existentes.\n\n**Agregar turno anterior:** Los nuevos datos se combinan con los existentes, ideal para cargar múltiples turnos."
+    )
+
+    if modo_carga == "Agregar turno anterior":
+        st.info("🔄 Los datos del nuevo archivo se **agregarán** a los existentes. Los duplicados serán eliminados automáticamente.")
+
+    # Botón para limpiar todos los datos
+    if st.button("🗑️ Limpiar todos los datos", type="secondary", use_container_width=True):
+        st.session_state.df_uebd = None
+        st.session_state.df_qaqc = None
+        st.session_state.plan_semanal = None
+        st.session_state.plan_mensual = None
+        # Limpiar caché para forzar reprocesamiento
+        st.cache_data.clear()
+        st.success("✅ Datos limpiados correctamente")
+        st.rerun()
+
+    st.markdown("---")
+
     file_uebd = st.file_uploader("📋 Archivo UEBD", type=['xlsx', 'xls', 'csv'], key='uebd')
     if file_uebd:
         with st.status("🔩 Cargando datos de perforación...", expanded=True) as status:
             st.write("⛏️ Extrayendo registros de tiempos...")
             # Pasar año para filtrar durante la lectura (más eficiente)
+            # Usar hash del contenido del archivo para invalidar caché
+            file_content = file_uebd.read()
+            file_uebd.seek(0)  # Resetear posición del archivo
             df = leer_archivo_optimizado(file_uebd, anio_filtro=anio_seleccionado)
             if df is not None:
                 st.write("🎯 Procesando datos por equipo...")
-                st.session_state.df_uebd = procesar_uebd(df, anio_seleccionado)
-                status.update(label=f"✅ UEBD cargado: {len(st.session_state.df_uebd):,} registros", state="complete")
+                df_nuevo = procesar_uebd(df, anio_seleccionado)
+
+                if modo_carga == "Agregar turno anterior" and st.session_state.df_uebd is not None:
+                    registros_antes = len(st.session_state.df_uebd)
+                    st.session_state.df_uebd = combinar_datos_uebd(st.session_state.df_uebd, df_nuevo)
+                    registros_nuevos = len(st.session_state.df_uebd) - registros_antes
+                    status.update(label=f"✅ UEBD: +{registros_nuevos:,} registros añadidos (Total: {len(st.session_state.df_uebd):,})", state="complete")
+                else:
+                    st.session_state.df_uebd = df_nuevo
+                    status.update(label=f"✅ UEBD cargado: {len(st.session_state.df_uebd):,} registros", state="complete")
 
     file_qaqc = st.file_uploader("📊 Archivo QAQC", type=['xlsx', 'xls', 'csv'], key='qaqc')
     if file_qaqc:
         with st.status("💎 Cargando datos de pozos...", expanded=True) as status:
             st.write("🕳️ Leyendo metros perforados...")
             # Pasar año para filtrar durante la lectura (más eficiente)
+            # Usar hash del contenido del archivo para invalidar caché
+            file_content = file_qaqc.read()
+            file_qaqc.seek(0)  # Resetear posición del archivo
             df = leer_archivo_optimizado(file_qaqc, anio_filtro=anio_seleccionado)
             if df is not None:
                 st.write("📐 Calculando desviaciones...")
-                st.session_state.df_qaqc = procesar_qaqc(df, anio_seleccionado)
-                status.update(label=f"✅ QAQC cargado: {len(st.session_state.df_qaqc):,} pozos", state="complete")
+                df_nuevo = procesar_qaqc(df, anio_seleccionado)
 
+                if modo_carga == "Agregar turno anterior" and st.session_state.df_qaqc is not None:
+                    registros_antes = len(st.session_state.df_qaqc)
+                    st.session_state.df_qaqc = combinar_datos_qaqc(st.session_state.df_qaqc, df_nuevo)
+                    registros_nuevos = len(st.session_state.df_qaqc) - registros_antes
+                    status.update(label=f"✅ QAQC: +{registros_nuevos:,} pozos añadidos (Total: {len(st.session_state.df_qaqc):,})", state="complete")
+                else:
+                    st.session_state.df_qaqc = df_nuevo
+                    status.update(label=f"✅ QAQC cargado: {len(st.session_state.df_qaqc):,} pozos", state="complete")
+
+    # Mostrar resumen de datos cargados
+    if st.session_state.df_uebd is not None or st.session_state.df_qaqc is not None:
+        st.markdown("---")
+        st.subheader("📊 Datos Cargados")
+
+        if st.session_state.df_uebd is not None and len(st.session_state.df_uebd) > 0:
+            fechas_uebd = st.session_state.df_uebd['fecha'].unique()
+            fecha_min_uebd = min(fechas_uebd)
+            fecha_max_uebd = max(fechas_uebd)
+            equipos_uebd = st.session_state.df_uebd['rig'].nunique()
+            st.markdown(f"""
+            **UEBD:**
+            - 📅 Fechas: `{fecha_min_uebd}` a `{fecha_max_uebd}`
+            - 📝 Registros: `{len(st.session_state.df_uebd):,}`
+            - 🚜 Equipos: `{equipos_uebd}`
+            """)
+
+        if st.session_state.df_qaqc is not None and len(st.session_state.df_qaqc) > 0:
+            fechas_qaqc = st.session_state.df_qaqc['fecha'].unique()
+            fecha_min_qaqc = min(fechas_qaqc)
+            fecha_max_qaqc = max(fechas_qaqc)
+            metros_total = st.session_state.df_qaqc['metros'].sum()
+            pozos_total = st.session_state.df_qaqc['hole'].nunique()
+            st.markdown(f"""
+            **QAQC:**
+            - 📅 Fechas: `{fecha_min_qaqc}` a `{fecha_max_qaqc}`
+            - 📏 Metros totales: `{metros_total:,.1f}` m
+            - 🕳️ Pozos: `{pozos_total:,}`
+            """)
+
+    st.markdown("---")
     st.subheader("Archivos de Planes")
 
     file_semanal = st.file_uploader("📅 Plan Semanal", type=['xlsx', 'xls'], key='semanal')
@@ -671,10 +782,22 @@ if st.session_state.df_uebd is not None and st.session_state.df_qaqc is not None
     # Inicializar filtros en session_state si no existen
     if 'filtro_equipo' not in st.session_state:
         st.session_state.filtro_equipo = 'TODOS'
-    if 'fecha_ini' not in st.session_state:
-        fechas_disp = sorted(st.session_state.df_qaqc['fecha'].unique())
-        st.session_state.fecha_ini = min(fechas_disp) if fechas_disp else None
-        st.session_state.fecha_fin = max(fechas_disp) if fechas_disp else None
+
+    # Siempre recalcular las fechas disponibles basándose en los datos actuales
+    fechas_disp = sorted(st.session_state.df_qaqc['fecha'].unique())
+    fecha_min_datos = min(fechas_disp) if fechas_disp else None
+    fecha_max_datos = max(fechas_disp) if fechas_disp else None
+
+    # Inicializar o actualizar filtros de fecha si los datos han cambiado
+    if 'fecha_ini' not in st.session_state or st.session_state.fecha_ini is None:
+        st.session_state.fecha_ini = fecha_min_datos
+        st.session_state.fecha_fin = fecha_max_datos
+    else:
+        # Si hay nuevos datos con fechas fuera del rango actual, expandir automáticamente
+        if fecha_min_datos and st.session_state.fecha_ini > fecha_min_datos:
+            st.session_state.fecha_ini = fecha_min_datos
+        if fecha_max_datos and st.session_state.fecha_fin < fecha_max_datos:
+            st.session_state.fecha_fin = fecha_max_datos
 
     # Filtros globales en sidebar para no recargar al cambiar
     with st.sidebar:
