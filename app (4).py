@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+from datetime import time as dtime
 import io
 
 # Configuración de página
@@ -87,6 +88,32 @@ def format_number(n, decimals=1):
         return '-'
     return f"{n:,.{decimals}f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
+def agregar_dia_operacional_y_turno(df: pd.DataFrame, ts_col: str, out_date_col: str = "dia_operacional") -> pd.DataFrame:
+    """
+    Agrega columnas:
+    - out_date_col: día operacional (si hora>=21 => día+1)
+    - turno: 'A' si hora>=21 o hora<9, si no 'B'
+
+    Supuesto operacional (según nombres de archivos típicos 21:00-09:00):
+    - Turno A: 21:00-09:00
+    - Turno B: 09:00-21:00
+    """
+    if ts_col not in df.columns:
+        return df
+    if len(df) == 0:
+        df[out_date_col] = pd.Series(dtype="object")
+        df["turno"] = pd.Series(dtype="object")
+        return df
+
+    ts = pd.to_datetime(df[ts_col], errors="coerce")
+    hour = ts.dt.hour
+
+    df = df.copy()
+    df["turno"] = np.where((hour >= 21) | (hour < 9), "A", "B")
+    base_day = ts.dt.floor("D")
+    df[out_date_col] = (base_day + pd.to_timedelta((hour >= 21).astype(int), unit="D")).dt.date
+    return df
+
 @st.cache_data
 def procesar_uebd(df, anio=None):
     """Procesa archivo UEBD - Versión optimizada con vectorización"""
@@ -127,7 +154,9 @@ def procesar_uebd(df, anio=None):
     result['anio'] = result['fecha_raw'].dt.year
 
     # Seleccionar columnas finales
-    return result[['rig', 'fecha', 'mes', 'anio', 'duracion', 'codigo', 'estado', 'planificado']].reset_index(drop=True)
+    # Mantener timestamp para poder separar Turno A/B en reportes
+    result['timestamp'] = result['fecha_raw']
+    return result[['rig', 'fecha', 'mes', 'anio', 'timestamp', 'duracion', 'codigo', 'estado', 'planificado']].reset_index(drop=True)
 
 @st.cache_data
 def procesar_qaqc(df, anio=None):
@@ -215,7 +244,9 @@ def procesar_qaqc(df, anio=None):
     result['anio'] = result['fecha_raw'].dt.year
 
     # Seleccionar columnas finales
-    return result[['rig', 'fecha', 'mes', 'anio', 'hole', 'metros', 'malla', 'desv_xy', 'desv_largo']].reset_index(drop=True)
+    # Mantener timestamp para poder separar Turno A/B en reportes
+    result['timestamp'] = result['fecha_raw']
+    return result[['rig', 'fecha', 'mes', 'anio', 'timestamp', 'hole', 'metros', 'malla', 'desv_xy', 'desv_largo']].reset_index(drop=True)
 
 @st.cache_data
 def procesar_plan_semanal(df):
@@ -735,11 +766,12 @@ if st.session_state.df_uebd is not None and st.session_state.df_qaqc is not None
     st.info(f"📊 **Filtros activos:** Equipo: {equipo_filtro} | Período: {fecha_ini} a {fecha_fin} | Registros UEBD: {len(df_u_filtrado):,} | Registros QAQC: {len(df_q_filtrado):,}")
 
     # Tabs principales
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📅 Metros Diarios vs Mensual",
         "📊 Real vs Semanal vs Mensual",
         "📈 Análisis Anual por Mes",
-        "🔧 Detalle de Códigos"
+        "🔧 Detalle de Códigos",
+        "📥 Reporte Turnos (Excel)"
     ])
 
     # TAB 1: METROS DIARIOS VS MENSUAL + DESVIACIONES QAQC
@@ -1382,6 +1414,194 @@ if st.session_state.df_uebd is not None and st.session_state.df_qaqc is not None
                 fig_evol = px.line(evol_diaria, x='fecha', y='horas', color='codigo',
                                   title='Evolución Diaria de Horas por Código Seleccionado')
                 st.plotly_chart(fig_evol, use_container_width=True)
+
+    # TAB 5: REPORTE TURNOS (EXCEL)
+    with tab5:
+        st.subheader("📥 Reporte de Turnos (TA/TB) - Exportable a Excel")
+        st.caption("Este reporte mantiene los metros como números para que puedas sumar/filtrar en Excel.")
+
+        # Preparar QAQC con turno y día operacional
+        df_q_rep = agregar_dia_operacional_y_turno(df_q_filtrado, "timestamp", out_date_col="dia_operacional")
+
+        if len(df_q_rep) == 0:
+            st.info("No hay datos QAQC en el rango seleccionado para generar el reporte.")
+        else:
+            # Selector de día operacional
+            dias = sorted(pd.Series(df_q_rep["dia_operacional"]).dropna().unique().tolist())
+            dia_sel = st.selectbox("Seleccione día operacional", dias, index=len(dias) - 1 if len(dias) > 0 else 0)
+
+            df_q_dia = df_q_rep[df_q_rep["dia_operacional"] == dia_sel].copy()
+
+            # Frente (si existe en malla/pattern)
+            if "malla" in df_q_dia.columns:
+                df_q_dia["frente"] = df_q_dia["malla"].astype(str).str.extract(r"(F\\d{2})", expand=False).fillna("")
+            else:
+                df_q_dia["frente"] = ""
+
+            # Metros por rig y turno
+            piv = (
+                df_q_dia.groupby(["frente", "rig", "turno"], dropna=False)["metros"]
+                .sum()
+                .unstack("turno", fill_value=0)
+                .reset_index()
+            )
+            if "A" not in piv.columns:
+                piv["A"] = 0.0
+            if "B" not in piv.columns:
+                piv["B"] = 0.0
+
+            piv["TURNO A"] = pd.to_numeric(piv["A"], errors="coerce").fillna(0.0)
+            piv["TURNO B"] = pd.to_numeric(piv["B"], errors="coerce").fillna(0.0)
+            piv = piv.drop(columns=[c for c in ["A", "B"] if c in piv.columns])
+            piv["TOTAL"] = piv["TURNO A"] + piv["TURNO B"]
+
+            # PLAN (si hay plan semanal cargado)
+            plan_dict = st.session_state.plan_semanal or {}
+
+            def _plan_metros(fecha_op, rig):
+                try:
+                    f = fecha_op
+                    if isinstance(fecha_op, str):
+                        f = pd.to_datetime(fecha_op).date()
+                    d = plan_dict.get(f, {}).get("por_rig", {}).get(rig, {})
+                    return float(d.get("metros", 0) or 0)
+                except:
+                    return 0.0
+
+            piv["PLAN"] = piv["rig"].apply(lambda r: _plan_metros(dia_sel, r))
+
+            # Cumplimientos (%)
+            def _pct(num, den):
+                return (num / den * 100.0) if den and den > 0 else 0.0
+
+            piv["CUMPLIMIENTO TA"] = piv.apply(lambda row: _pct(row["TURNO A"], row["PLAN"]), axis=1)
+            piv["CUMPLIMIENTO TB"] = piv.apply(lambda row: _pct(row["TURNO B"], row["PLAN"]), axis=1)
+            piv["CUMPLIMIENTO DIARIO"] = piv.apply(lambda row: _pct(row["TOTAL"], row["PLAN"]), axis=1)
+
+            # ESTADO PERFORADORA (desde UEBD, por turno)
+            df_u_rep = agregar_dia_operacional_y_turno(df_u_filtrado, "timestamp", out_date_col="dia_operacional")
+            estado_piv = None
+            if len(df_u_rep) > 0 and {"rig", "estado", "duracion", "turno", "dia_operacional"}.issubset(df_u_rep.columns):
+                df_u_dia = df_u_rep[df_u_rep["dia_operacional"] == dia_sel].copy()
+                if len(df_u_dia) > 0:
+                    df_u_dia["horas"] = pd.to_numeric(df_u_dia["duracion"], errors="coerce").fillna(0.0) / 3600.0
+                    tmp = (
+                        df_u_dia.groupby(["rig", "turno", "estado"], dropna=False)["horas"]
+                        .sum()
+                        .reset_index()
+                    )
+                    if len(tmp) > 0:
+                        # Estado dominante por rig+turno
+                        tmp = tmp.sort_values(["rig", "turno", "horas"], ascending=[True, True, False])
+                        dom = tmp.drop_duplicates(subset=["rig", "turno"], keep="first")
+                        estado_piv = dom.pivot(index="rig", columns="turno", values="estado").reset_index()
+                        if "A" not in estado_piv.columns:
+                            estado_piv["A"] = ""
+                        if "B" not in estado_piv.columns:
+                            estado_piv["B"] = ""
+                        estado_piv = estado_piv.rename(columns={"A": "ESTADO PERFORADORA TA", "B": "ESTADO PERFORADORA TB"})
+
+            if estado_piv is not None:
+                piv = piv.merge(estado_piv, on="rig", how="left")
+            else:
+                piv["ESTADO PERFORADORA TA"] = ""
+                piv["ESTADO PERFORADORA TB"] = ""
+
+            # Orden columnas
+            cols_final = [
+                "frente", "rig",
+                "TURNO A", "TURNO B", "TOTAL", "PLAN",
+                "CUMPLIMIENTO TA", "CUMPLIMIENTO TB", "CUMPLIMIENTO DIARIO",
+                "ESTADO PERFORADORA TA", "ESTADO PERFORADORA TB",
+            ]
+            for c in cols_final:
+                if c not in piv.columns:
+                    piv[c] = ""
+            piv = piv[cols_final].copy()
+
+            # Totales por frente + total global
+            def _total_row(df_sub, frente_label):
+                sA = float(df_sub["TURNO A"].sum())
+                sB = float(df_sub["TURNO B"].sum())
+                sT = float(df_sub["TOTAL"].sum())
+                sP = float(df_sub["PLAN"].sum())
+                return {
+                    "frente": frente_label,
+                    "rig": "TOTAL",
+                    "TURNO A": sA,
+                    "TURNO B": sB,
+                    "TOTAL": sT,
+                    "PLAN": sP,
+                    "CUMPLIMIENTO TA": _pct(sA, sP),
+                    "CUMPLIMIENTO TB": _pct(sB, sP),
+                    "CUMPLIMIENTO DIARIO": _pct(sT, sP),
+                    "ESTADO PERFORADORA TA": "",
+                    "ESTADO PERFORADORA TB": "",
+                }
+
+            frames = []
+            frentes = piv["frente"].fillna("").unique().tolist()
+            frentes_orden = sorted([f for f in frentes if f != ""]) + ([""] if "" in frentes else [])
+            for f in frentes_orden:
+                sub = piv[piv["frente"] == f].copy()
+                sub = sub.sort_values(["rig"])
+                frames.append(sub)
+                frames.append(pd.DataFrame([_total_row(sub, f if f else "SIN_FRENTE")]))
+
+            df_reporte = pd.concat(frames, ignore_index=True) if frames else piv.copy()
+
+            # Total global
+            total_global = _total_row(piv, "TOTAL METROS")
+            total_global["rig"] = "TOTAL METROS"
+            df_reporte = pd.concat([df_reporte, pd.DataFrame([total_global])], ignore_index=True)
+
+            # Mostrar en pantalla (formato)
+            df_show = df_reporte.copy()
+            st.dataframe(
+                df_show.style.format({
+                    "TURNO A": "{:,.0f}",
+                    "TURNO B": "{:,.0f}",
+                    "TOTAL": "{:,.0f}",
+                    "PLAN": "{:,.0f}",
+                    "CUMPLIMIENTO TA": "{:.1f}%",
+                    "CUMPLIMIENTO TB": "{:.1f}%",
+                    "CUMPLIMIENTO DIARIO": "{:.1f}%",
+                }),
+                use_container_width=True
+            )
+
+            # Export a Excel (mantener numéricos)
+            export_df = df_reporte.copy()
+            # Asegurar tipos numéricos
+            for c in ["TURNO A", "TURNO B", "TOTAL", "PLAN", "CUMPLIMIENTO TA", "CUMPLIMIENTO TB", "CUMPLIMIENTO DIARIO"]:
+                export_df[c] = pd.to_numeric(export_df[c], errors="coerce").fillna(0.0)
+
+            output = io.BytesIO()
+            try:
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    export_df.to_excel(writer, index=False, sheet_name="Turnos")
+
+                    # Formato básico en Excel (porcentaje)
+                    ws = writer.book["Turnos"]
+                    header = [cell.value for cell in ws[1]]
+                    pct_cols = {"CUMPLIMIENTO TA", "CUMPLIMIENTO TB", "CUMPLIMIENTO DIARIO"}
+                    for j, name in enumerate(header, start=1):
+                        if name in pct_cols:
+                            for i in range(2, ws.max_row + 1):
+                                ws.cell(row=i, column=j).number_format = "0.0\\%"
+                        if name in {"TURNO A", "TURNO B", "TOTAL", "PLAN"}:
+                            for i in range(2, ws.max_row + 1):
+                                ws.cell(row=i, column=j).number_format = "#,##0"
+            except Exception as e:
+                st.error(f"Error exportando Excel: {e}")
+            else:
+                st.download_button(
+                    label="⬇️ Descargar Excel (Turnos)",
+                    data=output.getvalue(),
+                    file_name=f"Reporte_Turnos_{dia_sel}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
 else:
     # Mensaje cuando no hay datos cargados
